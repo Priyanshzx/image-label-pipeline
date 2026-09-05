@@ -1,0 +1,141 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Event-driven image label pipeline: S3 upload -> SQS -> Lambda -> Rekognition
+  -> DynamoDB -> API Gateway (HTTP API). Failed messages retry up to 3 times
+  before landing in a Dead Letter Queue.
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Globally unique name for the image upload bucket (must not already exist).
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+    MemorySize: 256
+
+Resources:
+
+  ImagesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-image-labels"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: image_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: image_key
+          KeyType: HASH
+
+  ProcessingDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-processing-dlq"
+      MessageRetentionPeriod: 1209600  # 14 days, the max - gives you time to inspect/replay failures
+
+  ProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-processing-queue"
+      VisibilityTimeout: 60          # must be >= Lambda timeout above
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ProcessingDLQ.Arn
+        maxReceiveCount: 3
+
+  ProcessingQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref ProcessingQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt ProcessingQueue.Arn
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub "arn:aws:s3:::${BucketName}"
+
+  # DependsOn is required here: S3 validates that the queue's policy already
+  # grants it permission *before* it will accept the notification config.
+  ImagesBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: ProcessingQueuePolicy
+    Properties:
+      BucketName: !Ref BucketName
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Queue: !GetAtt ProcessingQueue.Arn
+
+  ProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: processor/
+      Handler: processor_lambda.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ImagesTable
+          MAX_LABELS: "10"
+          MIN_CONFIDENCE: "75"
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref ImagesTable
+        - S3ReadPolicy:
+            BucketName: !Ref BucketName
+        - Statement:
+            - Effect: Allow
+              # Rekognition has no resource-level permissions for DetectLabels;
+              # AWS requires this action be granted on "*".
+              Action: rekognition:DetectLabels
+              Resource: "*"
+      Events:
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ProcessingQueue.Arn
+            BatchSize: 5
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: api/
+      Handler: api_lambda.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ImagesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref ImagesTable
+      Events:
+        ListImages:
+          Type: HttpApi
+          Properties:
+            Path: /images
+            Method: GET
+        GetImage:
+          Type: HttpApi
+          Properties:
+            Path: /images/{image_key}
+            Method: GET
+
+Outputs:
+  ApiUrl:
+    Description: Base URL for the API
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  BucketNameOutput:
+    Description: Upload images here to trigger processing
+    Value: !Ref ImagesBucket
+  TableNameOutput:
+    Value: !Ref ImagesTable
+  DLQUrlOutput:
+    Description: Inspect this if images aren't showing up in the API
+    Value: !Ref ProcessingDLQ
