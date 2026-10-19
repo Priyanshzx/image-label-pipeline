@@ -1,3 +1,4 @@
+![CI](https://github.com/Priyanshzx/image-label-pipeline/actions/workflows/ci.yml/badge.svg)
 # Build an AI-Powered Serverless Image Labeling Pipeline
 
 This extends your S3 + Rekognition project into a fully event-driven, decoupled, production-shaped pipeline: upload an image and labels appear automatically, queryable through a REST API — no manual script to run.
