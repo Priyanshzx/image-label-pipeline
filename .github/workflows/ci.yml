@@ -13,6 +13,7 @@ permissions:
 env:
   AWS_REGION: ap-south-1
   STACK_NAME: image-label-pipeline
+  ROLE_ARN: arn:aws:iam::554739428679:role/github-actions-sam-deploy
 
 jobs:
   test:
@@ -39,7 +40,6 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    # id-token is required for OIDC; granted only to this job
     permissions:
       id-token: write
       contents: read
@@ -54,10 +54,16 @@ jobs:
         with:
           use-installer: true
 
+      # Temporary debug step: prints sub, aud, iss (no secrets)
+      - name: Debug OIDC token claims
+        run: |
+          TOKEN=$(curl -sH "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
+          echo "$TOKEN" | python3 -c "import sys,json,base64; p=sys.stdin.read().strip().split('.')[1]; p+='='*(-len(p)%4); c=json.loads(base64.urlsafe_b64decode(p)); print({k:c[k] for k in ['sub','aud','iss']})"
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ env.ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: SAM build
