@@ -7,7 +7,7 @@ s3_prefix = "image-label-pipeline"
 region = "ap-south-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "BucketName=\"priyansh-label-pipeline-images\""
+parameter_overrides = "BucketName=\"priyansh-label-pipeline-images-554739428679\""
 image_repositories = []
 
 [default.global.parameters]
