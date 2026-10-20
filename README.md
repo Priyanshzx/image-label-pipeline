@@ -41,8 +41,7 @@ Example:
 curl https://7ihoz1j4d1.execute-api.ap-south-1.amazonaws.com/images
 ```
 
-<!-- Add a screenshot of the API response or the DynamoDB item here -->
-![Example result](docs/result.png)
+![Example result](result.png)
 
 ## CI/CD
 
@@ -68,7 +67,7 @@ pytest -v
 
 ```bash
 sam build
-sam deploy --guided
+sam deploy
 ```
 
 ## Tech stack
