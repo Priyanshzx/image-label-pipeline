@@ -1,6 +1,6 @@
 # Event-Driven Image Labeling Pipeline
 
-![CI](https://github.com/Priyanshzx/image-label-pipeline/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/Priyanshzx/image-label-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/Priyanshzx/image-label-pipeline/actions/workflows/ci.yml)
 
 A serverless, event-driven AWS pipeline that automatically labels uploaded images with Amazon Rekognition and exposes the results through a REST API. Infrastructure is defined as code with AWS SAM and deployed automatically by GitHub Actions.
 
@@ -35,10 +35,10 @@ flowchart LR
 | GET | `/images` | List all labeled images |
 | GET | `/images/{image_key}` | Get labels for one image (404 if not found) |
 
-Example:
+Example (use the API URL from the stack outputs):
 
 ```bash
-curl https://7ihoz1j4d1.execute-api.ap-south-1.amazonaws.com/images
+curl https://<api-id>.execute-api.ap-south-1.amazonaws.com/images
 ```
 
 ![Example result](result.png)
